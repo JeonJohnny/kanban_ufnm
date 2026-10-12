@@ -7,6 +7,7 @@ import { Button } from './ui/button'
 import { Board } from './Board'
 import { Settings } from './Settings'
 import { ActivityReport } from './ActivityReport'
+import { AppVersion } from './AppVersion'
 import { ProjectList } from './ProjectList'
 import { Forms, type Editor } from './Forms'
 import { action, edge, loadBoard, supabase } from '@/lib/api'
@@ -115,7 +116,7 @@ export default function Workspace({ me, theme, onLeave }: { me: Member; theme: R
 </div>}</article>)}</div>}
       {page === 'notifications' && <div className="space-y-3">{[...data.notifications].sort((a, b) => b.created_at.localeCompare(a.created_at)).map(n => <button key={n.id} className="panel flex w-full items-center gap-4 p-5 text-left" onClick={async () => { if (online) await run('read_notification', { id: n.id }); if (n.event_type === 'notice') { navigate('notices'); const notice = data.notices.find(x => x.id === n.related_id); if (notice) await openNotice(notice) } else navigate('progress') }}><span className={cn('size-2 rounded-full', n.read_at ? 'bg-muted' : 'bg-primary')} /><div className="flex-1"><p className="text-sm font-medium">{n.event_type === 'notice' ? '새 전달사항이 도착했습니다.' : n.event_type === 'progress_request' ? '진행상황 공유를 요청받았습니다.' : '요청한 진행상황 응답이 도착했습니다.'}</p><p className="caption mt-1">{dateLabel(n.created_at)}</p></div><ChevronRight size={16} /></button>)}{data.notifications.length === 0 && <div className="panel empty">새로운 알림이 없습니다.</div>}</div>}
       </>}
-    </main></div>
+    </main><footer className="px-5 pb-4"><AppVersion /></footer></div>
     {message && <div role="status" className="fixed inset-x-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-40 flex items-center gap-2 rounded-xl border bg-card py-1 pl-4 pr-1 text-sm text-primary shadow-lg sm:left-auto sm:max-w-sm"><Check size={16} className="shrink-0" />{message}<button className="ml-auto grid size-11 shrink-0 place-items-center" aria-label="메시지 닫기" onClick={() => setMessage('')}><X size={15} /></button></div>}
     {editor && <Forms editor={editor} project={project} data={data} me={me} busy={busy || !online} error={error} run={run} onClose={() => !busy && setEditor(null)} />}
   </div>

@@ -3,11 +3,16 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import { fileURLToPath, URL } from 'node:url'
+import { readFileSync } from 'node:fs'
 
 export default defineConfig(({ mode }) => {
   const key = loadEnv(mode, process.cwd(), 'VITE_').VITE_SUPABASE_PUBLISHABLE_KEY
   if (key && !key.startsWith('sb_publishable_')) throw new Error('프론트엔드에는 sb_publishable_ 키만 사용할 수 있습니다. 서버 secret/service_role 키를 제거하세요.')
   return {
+  define: {
+    __APP_VERSION__: JSON.stringify(JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version),
+    __BUILD_ID__: JSON.stringify(process.env.GITHUB_SHA?.slice(0, 7) || '로컬'),
+  },
   base: '/kanban_ufnm/',
   plugins: [react(), tailwindcss(), VitePWA({
     registerType: 'prompt',

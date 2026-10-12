@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+supabase/functions/.env
+supabase/.branches/
+supabase/.temp/
+*.md

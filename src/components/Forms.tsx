@@ -15,7 +15,7 @@ export function Forms({ editor, project, data, me, busy, error, run, onClose }: 
   const [taskProject, setTaskProject] = useState(editor.kind === 'task' ? editor.task?.project_id ?? project?.id ?? data.projects.find(p => p.status === 'active')?.id ?? '' : '')
   const [taskAssignees, setTaskAssignees] = useState<string[]>(editor.kind === 'task' ? editor.task?.assignee_member_ids ?? [] : [])
   const selectedProject = data.projects.find(p => p.id === taskProject)
-  const assignees = data.members.filter(m => m.is_active && (canManage(m.role) || selectedProject?.all_members || selectedProject?.member_ids?.includes(m.id)))
+  const assignees = data.members.filter(m => m.is_active && m.role !== 'admin' && (m.role === 'deputy' || (selectedProject?.owner_member_id ? m.id === selectedProject.owner_member_id : selectedProject?.all_members || selectedProject?.member_ids?.includes(m.id))))
   async function submit(event: FormEvent<HTMLFormElement>, action: string, extra: object = {}) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
@@ -52,30 +52,31 @@ export function Forms({ editor, project, data, me, busy, error, run, onClose }: 
       <div className="mt-2 flex justify-between gap-2">{task ? <Button type="button" variant="ghost" className="text-red-600" onClick={async () => { if (await run('delete_task', { id: task.id, revision: task.revision })) onClose() }}><Trash2 />삭제</Button> : <span />}<div className="flex gap-2"><Button type="button" variant="outline" onClick={onClose}>취소</Button><Button type="submit">{busy ? '저장 중…' : '저장'}</Button></div></div>{task && <p className="caption">삭제한 태스크는 관리자가 보관함에서 복원할 수 있습니다.</p>}
     </fieldset></form>{task && <TaskComments task={task} data={data} me={me} busy={busy} run={run} />}</Modal>
   }
-  if (editor.kind === 'project') return <ProjectForm project={editor.project} data={data} busy={busy} error={error} run={run} onClose={onClose} />
+  if (editor.kind === 'project') return <ProjectForm project={editor.project} me={me} data={data} busy={busy} error={error} run={run} onClose={onClose} />
   if (editor.kind === 'notice') return <NoticeForm data={data} busy={busy} error={error} run={run} onClose={onClose} />
   if (editor.kind === 'progress') return <Modal error={error} title="진행상황 공유" onClose={onClose}><form onSubmit={e => submit(e, 'respond_progress', { id: editor.request.id })}><fieldset className="form-stack" disabled={busy}><label>현재 진행 내용<textarea name="current_work" required maxLength={10000} /></label><label>문제점 또는 지연 사유<textarea name="blockers" required maxLength={10000} placeholder="문제가 없으면 ‘없음’으로 적어 주세요." /></label><label>다음 작업 계획<textarea name="next_steps" required maxLength={10000} /></label><label>예상 완료일<input name="estimated_completion_date" type="date" required /></label><Button>응답 전달</Button></fieldset></form></Modal>
   return <Modal error={error} title={editor.member ? `${editor.member.display_name} PIN 초기화` : '연구원 추가'} description={editor.member ? 'PIN을 초기화하면 해당 연구원의 기존 로그인 세션은 데이터에 접근할 수 없습니다.' : '연구원에게 이름과 PIN을 직접 전달해 주세요.'} onClose={onClose}><form onSubmit={e => submit(e, 'manage_member', { member_id: editor.member?.id })}><fieldset className="form-stack" disabled={busy}>{!editor.member && <label>연구원 이름<input name="name" required maxLength={50} autoComplete="off" /></label>}{!editor.member && <label>이메일 주소 (선택)<input type="email" name="email" maxLength={254} autoComplete="email" placeholder="researcher@example.com" /><span className="caption">수신용 연락처이며 같은 연구실 멤버에게 표시됩니다.</span></label>}<label>새 PIN<input name="pin" type="password" inputMode="numeric" pattern="[0-9]{4}" minLength={4} maxLength={4} required autoComplete="new-password" /></label><Button>{editor.member ? 'PIN 초기화' : '연구원 추가'}</Button>{editor.member?.id === me.id && <p className="caption">본인 PIN을 초기화하면 다시 로그인해야 합니다.</p>}</fieldset></form></Modal>
 }
-function ProjectForm({ project, data, busy, error, run, onClose }: { project?: Project; data: BoardData; busy: boolean; error: string; run: Run; onClose: () => void }) {
+function ProjectForm({ project, me, data, busy, error, run, onClose }: { project?: Project; me: Member; data: BoardData; busy: boolean; error: string; run: Run; onClose: () => void }) {
+  const privateProject = Boolean(project?.owner_member_id || (!project && !canManage(me.role)))
   const [allMembers, setAllMembers] = useState(project?.all_members ?? false)
   const members = data.members.filter(m => m.is_active && m.role !== 'admin')
   const [memberIds, setMemberIds] = useState(() => members.filter(m => project?.member_ids?.includes(m.id)).map(m => m.id))
   return <Modal error={error} title={project ? '프로젝트 설정' : '새 프로젝트'} onClose={onClose}><form onSubmit={async e => {
     e.preventDefault()
     const form = new FormData(e.currentTarget)
-    if (await run('save_project', { ...Object.fromEntries(form), id: project?.id, all_members: allMembers, member_ids: memberIds })) onClose()
+    if (await run('save_project', { ...Object.fromEntries(form), id: project?.id, ...(privateProject ? {} : { all_members: allMembers, member_ids: memberIds }) })) onClose()
   }}><fieldset disabled={busy} className="form-stack">
     <label>프로젝트 이름<input name="name" autoFocus required maxLength={100} defaultValue={project?.name} /></label>
     <label>설명<textarea name="description" maxLength={5000} defaultValue={project?.description} /></label>
     <label>색상<input type="color" name="color" defaultValue={project?.color ?? '#6366f1'} className="mt-2 h-11 w-full rounded-lg" /></label>
     {project && <label>상태<select name="status" defaultValue={project.status}><option value="active">활성</option><option value="archived">보관</option></select></label>}
-    <fieldset className="space-y-2"><legend className="mb-2 text-sm font-medium">할당 멤버</legend><p className="caption">선택한 연구원에게 프로젝트가 표시됩니다. 관리자·부관리자는 선택 여부와 관계없이 접근할 수 있습니다.</p>
+    {privateProject ? <p className="caption">개인 프로젝트입니다. 소유자({data.members.find(m => m.id === (project?.owner_member_id ?? me.id))?.display_name ?? '본인'})와 관리자·부관리자만 접근할 수 있습니다.</p> : <fieldset className="space-y-2"><legend className="mb-2 text-sm font-medium">할당 멤버</legend><p className="caption">선택한 연구원에게 프로젝트가 표시됩니다. 관리자·부관리자는 선택 여부와 관계없이 접근할 수 있습니다.</p>
       <label className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={allMembers} onChange={e => setAllMembers(e.target.checked)} />All (전체 연구원)</label>
       <p className="caption">All을 선택하면 앞으로 추가되는 연구원도 자동으로 포함됩니다.</p>
       {members.map(m => <label key={m.id} className="flex min-h-11 items-center gap-2"><input type="checkbox" disabled={allMembers} checked={allMembers || memberIds.includes(m.id)} onChange={e => setMemberIds(current => e.target.checked ? [...current, m.id] : current.filter(id => id !== m.id))} />{m.display_name}{m.role === 'deputy' && <span aria-hidden="true" className="chip bg-primary/10 text-primary">부관리자</span>}</label>)}
       <p className="caption">All을 해제하면 개별 선택한 멤버만 포함됩니다. 아무도 선택하지 않으면 관리자·부관리자만 볼 수 있습니다. 멤버를 제외해도 기존 업무는 삭제되지 않습니다.</p>
-    </fieldset><Button>프로젝트 저장</Button>
+    </fieldset>}<Button>프로젝트 저장</Button>
   </fieldset></form></Modal>
 }
 function PinForm({ busy, error, run, onClose }: { busy: boolean; error: string; run: Run; onClose: () => void }) {

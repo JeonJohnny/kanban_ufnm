@@ -1,5 +1,5 @@
 export type Member = { id: string; auth_user_id: string; workspace_id: string; display_name: string; email: string | null; role: 'admin' | 'deputy' | 'member'; is_active: boolean }
-export type Project = { sort_order: number; member_ids: string[]; all_members: boolean; id: string; workspace_id: string; name: string; description: string; color: string; status: 'active' | 'archived' }
+export type Project = { owner_member_id: string | null; sort_order: number; member_ids: string[]; all_members: boolean; id: string; workspace_id: string; name: string; description: string; color: string; status: 'active' | 'archived' }
 export type Task = { created_by: string; id: string; project_id: string; title: string; description: string; status: 'todo' | 'ongoing' | 'done'; priority: 'normal' | 'high' | 'urgent'; assignee_member_ids: string[]; due_date: string | null; position: number; revision: number; created_at: string; updated_at: string; completed_at: string | null; archived_at: string | null; deleted_at: string | null; source_notice_id: string | null }
 export type Notice = { id: string; title: string; content: string; author_member_id: string; is_important: boolean; is_broadcast: boolean; created_at: string }
 export type Receipt = { notice_id: string; recipient_member_id: string; read_at: string | null; confirmed_at: string | null }

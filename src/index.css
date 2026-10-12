@@ -41,3 +41,14 @@
   .empty { padding:48px 20px; text-align:center; color:var(--muted-foreground); font-size:14px; }
 }
 @media (prefers-reduced-motion:reduce) { *, *::before, *::after { transition:none !important; animation:none !important; scroll-behavior:auto !important; } }
+
+@media print {
+  @page { size:A4; margin:16mm; }
+  body:has(#activity-report-document) { background:white; color:#172033; color-scheme:light; }
+  body:has(#activity-report-document) *:not(:has(#activity-report-document)):not(#activity-report-document):not(#activity-report-document *) { display:none !important; }
+  body:has(#activity-report-document) *:has(#activity-report-document) { display:block !important; position:static !important; margin:0 !important; padding:0 !important; min-height:0 !important; width:auto !important; }
+  #activity-report-document { --card:#fff; --muted:#eef1f6; --muted-foreground:#526074; --border:#d5dbe4; --primary:#3730a3; margin:0; padding:0; max-width:none; border:0; border-radius:0; background:white; color:#172033; }
+  #activity-report-document :is(h2,h3,h4,h5,h6) { break-after:avoid; }
+  #activity-report-document p { orphans:3; widows:3; }
+  #activity-report-document pre { white-space:pre-wrap; overflow:visible; }
+}

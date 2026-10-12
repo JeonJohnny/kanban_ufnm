@@ -4,9 +4,10 @@ import { Send, Trash2 } from 'lucide-react'
 import { Button } from './ui/button'
 import { Modal } from './ui/dialog'
 import type { BoardData, Member, Notice, Progress, Project, Task } from '@/lib/types'
-import { priorityNames, statusNames } from '@/lib/utils'
+import { dateLabel, priorityNames, statusNames } from '@/lib/utils'
 import { Mail } from './Mail'
-import { TaskDescriptionEditor } from './TaskDescription'
+import { TaskDescription, TaskDescriptionEditor } from './TaskDescription'
+import { TaskComments } from './TaskComments'
 
 export type Run = (action: string, payload?: object) => Promise<boolean>
 export type Editor = { kind: 'task'; task?: Task; notice?: Notice; status?: Task['status'] } | { kind: 'project'; project?: Project } | { kind: 'notice' } | { kind: 'progress'; request: Progress } | { kind: 'mail'; notice: Notice } | { kind: 'member'; member?: Member } | { kind: 'pin' } | { kind: 'email'; member: Member }
@@ -25,6 +26,20 @@ export function Forms({ editor, project, data, me, busy, error, run, onClose }: 
   if (editor.kind === 'email') return <Modal title={`${editor.member.display_name} 이메일 수정`} description="수신용 연락처입니다. 같은 연구실의 로그인한 연구원이 볼 수 있으며, 비워 두면 등록된 주소가 삭제됩니다." error={error} onClose={onClose}><form onSubmit={e => submit(e, 'save_member_email', { p_member: editor.member.id })}><fieldset className="form-stack" disabled={busy}><label>이메일 주소<input autoFocus type="email" name="p_email" maxLength={254} autoComplete="email" defaultValue={editor.member.email ?? ''} placeholder="researcher@example.com" /></label><Button>이메일 저장</Button></fieldset></form></Modal>
   if (editor.kind === 'task') {
     const task = editor.task
+    if (task && task.created_by !== me.id && !canManage(me.role)) {
+      const current = data.tasks.find(t => t.id === task.id) ?? task
+      return <Modal error={error} title={current.title} onClose={onClose} wide>
+        <dl className="mb-4 grid grid-cols-2 gap-3 text-sm">{[
+          ['프로젝트', data.projects.find(p => p.id === current.project_id)?.name],
+          ['생성자', data.members.find(m => m.id === current.created_by)?.display_name],
+          ['상태', statusNames[current.status]], ['우선순위', priorityNames[current.priority]],
+          ['마감일', dateLabel(current.due_date)],
+          ['담당자', current.assignee_member_ids.length ? current.assignee_member_ids.map(id => data.members.find(m => m.id === id)?.display_name ?? '연구원').join(', ') : '전체 멤버'],
+        ].map(([label, value]) => <div key={label}><dt className="caption mb-1">{label}</dt><dd className="break-words">{value ?? '미등록'}</dd></div>)}</dl>
+        <TaskDescription text={current.description || '설명이 없습니다.'} />
+        <TaskComments task={current} data={data} me={me} busy={busy} run={run} />
+      </Modal>
+    }
     return <Modal error={error} title={task ? '태스크 상세' : editor.notice ? '전달사항을 태스크로 전환' : '새 태스크'} onClose={onClose} wide><form onSubmit={e => submit(e, 'save_task', { id: task?.id, revision: task?.revision, source_notice_id: editor.notice?.id, assignee_member_ids: taskAssignees })}><fieldset disabled={busy} className="form-stack">
       <label>프로젝트<select name="project_id" value={taskProject} onChange={e => setTaskProject(e.target.value)} required>{data.projects.filter(p => p.status === 'active' || p.id === task?.project_id).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
       <label>제목<input name="title" autoFocus required maxLength={200} defaultValue={task?.title ?? editor.notice?.title} placeholder="어떤 일을 해야 하나요?" /></label><TaskDescriptionEditor initialValue={task?.description ?? editor.notice?.content} />
@@ -35,7 +50,7 @@ export function Forms({ editor, project, data, me, busy, error, run, onClose }: 
       {task && <p className="caption">프로젝트를 바꾸고 저장하면 태스크와 연결된 진행상황 요청·응답도 함께 이동합니다.</p>}
       {task && <><Button type="button" variant="outline" disabled={!task.assignee_member_ids.length} onClick={async () => { if (await run('request_progress', { task_id: task.id })) onClose() }}><Send />진행상황 공유 요청</Button><p className="caption">저장된 담당자 모두에게 개별 요청을 보냅니다. 담당자를 변경했다면 먼저 저장하세요.</p></>}
       <div className="mt-2 flex justify-between gap-2">{task ? <Button type="button" variant="ghost" className="text-red-600" onClick={async () => { if (await run('delete_task', { id: task.id, revision: task.revision })) onClose() }}><Trash2 />삭제</Button> : <span />}<div className="flex gap-2"><Button type="button" variant="outline" onClick={onClose}>취소</Button><Button type="submit">{busy ? '저장 중…' : '저장'}</Button></div></div>{task && <p className="caption">삭제한 태스크는 관리자가 보관함에서 복원할 수 있습니다.</p>}
-    </fieldset></form></Modal>
+    </fieldset></form>{task && <TaskComments task={task} data={data} me={me} busy={busy} run={run} />}</Modal>
   }
   if (editor.kind === 'project') return <ProjectForm project={editor.project} data={data} busy={busy} error={error} run={run} onClose={onClose} />
   if (editor.kind === 'notice') return <NoticeForm data={data} busy={busy} error={error} run={run} onClose={onClose} />

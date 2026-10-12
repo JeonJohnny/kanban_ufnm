@@ -15,7 +15,7 @@ import { Brand } from '@/App'
 
 type Page = 'board' | 'notices' | 'progress' | 'archive' | 'members' | 'notifications' | 'settings'
 const pages = [{ id: 'board', label: '프로젝트 보드', icon: Columns3 }, { id: 'notices', label: '전달사항', icon: Megaphone }, { id: 'progress', label: '진행상황 요청', icon: MessageSquare }, { id: 'archive', label: '완료 보관함', icon: Archive }, { id: 'members', label: '연구원', icon: Users }, { id: 'settings', label: '설정', icon: Settings2 }] as const
-const empty: BoardData = { members: [], projects: [], tasks: [], notices: [], receipts: [], progress: [], notifications: [], taskReads: [] }
+const empty: BoardData = { members: [], projects: [], tasks: [], notices: [], receipts: [], progress: [], notifications: [], taskReads: [], comments: [] }
 export default function Workspace({ me, theme, onLeave }: { me: Member; theme: ReactNode; onLeave: () => Promise<void> }) {
   const client = useQueryClient()
   const [params, setParams] = useSearchParams()

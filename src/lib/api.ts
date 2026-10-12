@@ -26,7 +26,7 @@ export async function currentMember(): Promise<Member | null> {
   return data?.id ? data : null
 }
 export async function loadBoard(): Promise<BoardData> {
-  const pairs = [['members', 'workspace_members'], ['projects', 'projects'], ['tasks', 'tasks'], ['notices', 'notices'], ['receipts', 'notice_recipients'], ['progress', 'progress_requests'], ['notifications', 'notifications'], ['taskReads', 'task_reads']] as const
+  const pairs = [['members', 'workspace_members'], ['projects', 'projects'], ['tasks', 'tasks'], ['notices', 'notices'], ['receipts', 'notice_recipients'], ['progress', 'progress_requests'], ['notifications', 'notifications'], ['taskReads', 'task_reads'], ['comments', 'task_comments']] as const
   const entries = await Promise.all(pairs.map(async ([key, table]) => {
     const all = []
     // PostgREST caps each page; continue so archived tasks remain searchable as the lab grows.
@@ -52,6 +52,8 @@ export async function action(name: string, payload: object = {}) {
     : name === 'reorder_projects' ? await supabase!.rpc('reorder_projects', payload)
     : name === 'mark_seen' ? await supabase!.rpc('mark_seen', payload)
     : name === 'set_member_role' ? await supabase!.rpc('set_member_role', payload)
+    : name === 'add_task_comment' ? await supabase!.rpc('add_task_comment', payload)
+    : name === 'delete_task_comment' ? await supabase!.rpc('delete_task_comment', payload)
     : await supabase!.rpc('board_action', { action: name, payload })
   if (error?.code === '23514' && name === 'save_member_email') throw new Error('이메일 주소 형식을 확인하세요.')
   if (error) throw new Error(error.code === '40001' && name !== 'reorder_projects' && name !== 'set_member_role' ? '다른 사용자가 수정했습니다. 이 창을 닫고 태스크를 다시 열어 최신 내용을 확인하세요. 입력 내용은 저장되지 않았습니다.' : error.message)

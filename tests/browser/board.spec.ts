@@ -14,6 +14,7 @@ test('로그인 → 태스크 저장 → 전달사항 → 메일 초안, 반응�
     notice_recipients: [{ notice_id: 'notice-2', recipient_member_id: member.id, read_at: null }], progress_requests: [], notifications: [], project_reads: [], task_reads: [],
   }
   data.projects.push({ id: 'project-2', workspace_id: 'workspace-1', name: '분석 프로젝트', description: '후속 분석', color: '#6366f1', status: 'active', member_ids: ['member-2'] })
+  data.task_comments = []
   const token = `${Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url')}.${Buffer.from(JSON.stringify({ sub: user.id, exp: Math.floor(Date.now() / 1000) + 3600, session_id: 'test-session' })).toString('base64url')}.${Buffer.alloc(32).toString('base64url')}`
   await page.route('https://test.supabase.co/**', async route => {
     const url = new URL(route.request().url())
@@ -26,6 +27,16 @@ test('로그인 → 태스크 저장 → 전달사항 → 메일 초안, 반응�
     }
     else if (url.pathname.endsWith('/user')) result = user
     else if (url.pathname.endsWith('/current_member')) result = member
+    else if (url.pathname.endsWith('/add_task_comment')) {
+      result = { id: `comment-${data.task_comments.length}` }
+      data.task_comments.push({ ...(result as object), task_id: payload.p_task, content: payload.p_content, author_member_id: member.id, created_at: new Date().toISOString(), deleted_at: null })
+    }
+    else if (url.pathname.endsWith('/delete_task_comment')) {
+      const comment = data.task_comments.find(c => (c as {id:string}).id === payload.p_comment) as {author_member_id:string}
+      expect(comment.author_member_id===member.id || ['admin','deputy'].includes(member.role)).toBe(true)
+      data.task_comments = data.task_comments.filter(c => (c as {id:string}).id !== payload.p_comment)
+      result = {}
+    }
     else if (url.pathname.endsWith('/set_member_role')) {
       expect(member.role).toBe('admin')
       const target = data.workspace_members.find(m => (m as { id: string }).id === payload.p_member) as { role: string }
@@ -71,7 +82,7 @@ test('로그인 → 태스크 저장 → 전달사항 → 메일 초안, 반응�
       }
       if (payload.action === 'save_task') {
         if (payload.payload.id) Object.assign(tasks[0], payload.payload, { revision: 2 })
-        else tasks.push({ ...payload.payload, id: `task-${tasks.length + 1}`, position: 1024, revision: 1, created_at: new Date().toISOString(), archived_at: null, deleted_at: null })
+        else tasks.push({ ...payload.payload, created_by: member.id, id: `task-${tasks.length + 1}`, position: 1024, revision: 1, created_at: new Date().toISOString(), archived_at: null, deleted_at: null })
       }
       result = { id: 'task-1' }
     } else result = data[url.pathname.split('/').at(-1)!] ?? []
@@ -320,6 +331,32 @@ test('로그인 → 태스크 저장 → 전달사항 → 메일 초안, 반응�
   await page.reload()
   await expect(page.getByRole('button', { name: '설정', exact: true })).toHaveCount(0)
   await expect(page.getByLabel('첫 발송 시각')).toHaveCount(0)
+  await page.getByRole('button', { name: '프로젝트 보드', exact: true }).click()
+  tasks.push({ ...tasks.at(-1), id: 'task-comments', created_by: 'member-2', title: '동료가 만든 댓글 업무', description: '- 진행 내용 확인', assignee_member_ids: [] })
+  data.task_comments.push({ id: 'comment-other', task_id: 'task-comments', author_member_id: 'member-2', content: '동료 댓글', created_at: new Date().toISOString(), deleted_at: null })
+  await page.reload()
+  await page.getByRole('heading', { name: '동료가 만든 댓글 업무', exact: true }).click()
+  await expect(dialog.getByLabel('제목', { exact: true })).toHaveCount(0)
+  await expect(dialog.getByRole('button', { name: '저장', exact: true })).toHaveCount(0)
+  await expect(dialog.getByText('진행 내용 확인', { exact: true })).toBeVisible()
+  await expect(dialog.getByRole('button', { name: '댓글 삭제', exact: true })).toHaveCount(0)
+  await dialog.getByLabel('댓글', { exact: true }).fill('새 진행 내용 <script>alert(1)</script>')
+  await dialog.getByRole('button', { name: '댓글 등록', exact: true }).click()
+  await expect(dialog.getByLabel('댓글', { exact: true })).toHaveValue('')
+  await expect(dialog.getByText('새 진행 내용 <script>alert(1)</script>', { exact: true })).toBeVisible()
+  await page.reload()
+  await page.getByRole('heading', { name: '동료가 만든 댓글 업무', exact: true }).click()
+  await dialog.getByRole('article').filter({ hasText: '새 진행 내용' }).getByRole('button', { name: '댓글 삭제', exact: true }).click()
+  await expect(dialog.getByText('새 진행 내용 <script>alert(1)</script>', { exact: true })).toHaveCount(0)
+  await expect(dialog.getByText('동료 댓글', { exact: true })).toBeVisible()
+  member.role='deputy'
+  await page.reload()
+  await page.getByRole('heading', { name: '동료가 만든 댓글 업무', exact: true }).click()
+  await expect(dialog.getByLabel('제목', { exact: true })).toHaveValue('동료가 만든 댓글 업무')
+  await dialog.getByRole('button', { name: '댓글 삭제', exact: true }).click()
+  await expect(dialog.getByText('동료 댓글', { exact: true })).toHaveCount(0)
+  member.role='member'
+  await page.reload()
   await page.getByRole('button', { name: '내 PIN 변경', exact: true }).click()
   await dialog.getByLabel('현재 PIN', { exact: true }).fill('9999')
   await dialog.getByLabel('새 PIN', { exact: true }).fill('5678')

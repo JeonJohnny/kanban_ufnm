@@ -12,6 +12,7 @@ import { action, edge, loadBoard, supabase } from '@/lib/api'
 import type { BoardData, Member, Notice, Task } from '@/lib/types'
 import { cn, dateLabel } from '@/lib/utils'
 import { Brand } from '@/App'
+import { taskSeenThrough, unreadTaskIds } from '@/lib/taskUnread'
 
 type Page = 'board' | 'notices' | 'progress' | 'archive' | 'members' | 'notifications' | 'settings'
 const pages = [{ id: 'board', label: '프로젝트 보드', icon: Columns3 }, { id: 'notices', label: '전달사항', icon: Megaphone }, { id: 'progress', label: '진행상황 요청', icon: MessageSquare }, { id: 'archive', label: '완료 보관함', icon: Archive }, { id: 'members', label: '연구원', icon: Users }, { id: 'settings', label: '설정', icon: Settings2 }] as const
@@ -66,7 +67,7 @@ export default function Workspace({ me, theme, onLeave }: { me: Member; theme: R
     } catch (e) { setError(e instanceof Error ? e.message : '저장하지 못했습니다. 다시 시도하세요.'); await client.invalidateQueries({ queryKey: ['board', me.id] }); return false }
     finally { setBusy(false) }
   }
-  async function markSeen(payload: { p_task: string }) {
+  async function markSeen(payload: { p_task: string; p_seen_at: string }) {
     if (!online) return
     try { await action('mark_seen', payload); await client.invalidateQueries({ queryKey: ['board', me.id] }) }
     catch { setError('확인 상태를 저장하지 못했습니다. 연결 후 항목을 다시 열어 주세요.') }
@@ -74,11 +75,11 @@ export default function Workspace({ me, theme, onLeave }: { me: Member; theme: R
   function navigate(next: Page, projectId?: string) {
     setParams({ page: next, ...(projectId ? { project: projectId } : params.get('project') ? { project: params.get('project')! } : {}) }); setSelectedNotice(null)
   }
-  function openTask(task: Task) { setEditor({ kind: 'task', task }); if (!data.taskReads.some(r => r.task_id === task.id)) void markSeen({ p_task: task.id }) }
+  function openTask(task: Task) { setEditor({ kind: 'task', task }); if (unreadTasks.has(task.id)) void markSeen({ p_task: task.id, p_seen_at: taskSeenThrough(task, data.comments) }) }
   const name = (id: string | null) => data.members.find(m => m.id === id)?.display_name ?? '미지정'
   const recipients = (notice: Notice) => notice.is_broadcast ? '전체 연구원' : data.receipts.filter(r => r.notice_id === notice.id).map(r => name(r.recipient_member_id)).join(', ') || '수신자 없음'
   const unread = data.notifications.filter(n => !n.read_at).length
-  const unreadTasks = new Set(data.tasks.filter(t => !t.archived_at && !t.deleted_at && !data.taskReads.some(r => r.task_id === t.id)).map(t => t.id))
+  const unreadTasks = unreadTaskIds(data.tasks, data.taskReads, data.comments, me.id)
   const receivedNotices = data.notices.filter(n => n.author_member_id !== me.id && (n.is_broadcast || data.receipts.some(r => r.notice_id === n.id && r.recipient_member_id === me.id)))
   const sentNotices = data.notices.filter(n => n.author_member_id === me.id)
   const visibleNotices = noticeBox === 'received' ? receivedNotices : sentNotices

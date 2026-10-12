@@ -51,7 +51,10 @@ test('로그인 → 태스크 저장 → 전달사항 → 메일 초안, 반응�
     else if (url.pathname.endsWith('/save_member_email')) { member.email = payload.p_email; result = { id: member.id } }
     else if (url.pathname.endsWith('/mark_seen')) {
       const table=payload.p_project ? 'project_reads' : 'task_reads'
-      data[table].push({ project_id: payload.p_project, task_id: payload.p_task, member_id: member.id, read_at: new Date().toISOString() })
+      const record = data[table].find(r => (r as {task_id:string;member_id:string}).task_id === payload.p_task && (r as {member_id:string}).member_id === member.id)
+      const read = { project_id: payload.p_project, task_id: payload.p_task, member_id: member.id, read_at: payload.p_seen_at ?? new Date().toISOString() }
+      if (record) Object.assign(record, read)
+      else data[table].push(read)
       result={}
     }
     else if (url.pathname.endsWith('/reorder_projects')) {
@@ -142,6 +145,14 @@ test('로그인 → 태스크 저장 → 전달사항 → 메일 초안, 반응�
   await expect(page.getByRole('heading', { name: '촉매 합성 조건 확인' })).toBeVisible()
   expect(tasks[0].assignee_member_ids).toEqual(['member-2'])
   expect(tasks[0].description).toBe(markdown)
+  await expect(page.getByRole('button', { name: '프로젝트 보드', exact: true })).toHaveText('프로젝트 보드')
+  if (testInfo.project.name === 'desktop') await expect(page.getByRole('list', { name: '프로젝트 목록' }).getByRole('button', { name: '신소재 합성 연구', exact: true })).toHaveText('신소재 합성 연구')
+  await expect(page.getByRole('article')).not.toHaveClass(/border-primary/)
+  data.task_comments.push({ id: 'creator-comment', task_id: 'task-1', author_member_id: member.id, content: '직접 작성한 댓글', created_at: new Date().toISOString(), deleted_at: null })
+  await page.reload()
+  await expect(page.getByRole('button', { name: '프로젝트 보드', exact: true })).toHaveText('프로젝트 보드')
+  data.task_comments.push({ id: 'new-comment', task_id: 'task-1', author_member_id: 'member-2', content: '새 댓글 확인 요청', created_at: new Date().toISOString(), deleted_at: null })
+  await page.reload()
   await expect(page.getByRole('button', { name: '프로젝트 보드', exact: true })).toHaveText('프로젝트 보드1')
   if (testInfo.project.name === 'desktop') await expect(page.getByRole('list', { name: '프로젝트 목록' }).getByRole('button', { name: '신소재 합성 연구', exact: true })).toHaveText('신소재 합성 연구1')
   await expect(page.getByRole('article')).not.toContainText('테스트 연구원')
@@ -155,12 +166,18 @@ test('로그인 → 태스크 저장 → 전달사항 → 메일 초안, 반응�
   await expect(dialog.getByRole('checkbox', { name: '동료 연구원', exact: true })).toBeChecked()
   await expect(description).toHaveValue(markdown)
   await expect.poll(() => data.task_reads.length).toBe(1)
+  await expect(page.locator('button[aria-label="프로젝트 보드"]')).toHaveText('프로젝트 보드')
   await dialog.getByRole('button', { name: '저장', exact: true }).click()
   await expect(dialog.getByRole('alert')).toContainText('다른 사용자가 수정했습니다')
   await expect(dialog.getByRole('textbox', { name: '제목', exact: true })).toHaveValue('촉매 합성 조건 확인')
   await dialog.getByRole('button', { name: '닫기', exact: true }).click()
   await expect(page.getByRole('article').filter({ has: page.getByRole('heading', { name: '촉매 합성 조건 확인' }) })).not.toHaveClass(/border-primary/)
+  data.task_comments.push({ id: 'newer-comment', task_id: 'task-1', author_member_id: 'member-2', content: '다시 도착한 댓글', created_at: new Date().toISOString(), deleted_at: null })
+  await page.reload()
+  await expect(page.getByRole('button', { name: '프로젝트 보드', exact: true })).toHaveText('프로젝트 보드1')
   await page.getByRole('button', { name: /촉매 합성 조건 확인 온도/ }).click()
+  await expect(dialog.getByText('다시 도착한 댓글', { exact: true })).toBeVisible()
+  await expect(page.locator('button[aria-label="프로젝트 보드"]')).toHaveText('프로젝트 보드')
   await dialog.getByRole('combobox', { name: '프로젝트', exact: true }).selectOption('project-2')
   await dialog.getByRole('button', { name: '저장', exact: true }).click()
   await expect(page.getByRole('heading', { name: '촉매 합성 조건 확인' })).toHaveCount(0)
@@ -315,7 +332,7 @@ test('로그인 → 태스크 저장 → 전달사항 → 메일 초안, 반응�
   await dialog.getByRole('button', { name: '저장', exact: true }).click()
   expect(tasks.at(-1)).toMatchObject({ title: '부관리자 담당 업무', assignee_member_ids: ['member-2'] })
   await page.reload()
-  await page.getByRole('button', { name: '미확인: 부관리자 담당 업무', exact: true }).click()
+  await page.getByRole('button', { name: '부관리자 담당 업무', exact: true }).click()
   await expect(dialog.getByRole('checkbox', { name: '동료 연구원', exact: true })).toBeChecked()
   await dialog.getByRole('button', { name: '닫기', exact: true }).click()
   await page.getByRole('button', { name: '연구원', exact: true }).click()

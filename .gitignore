@@ -8,3 +8,6 @@ supabase/functions/.env
 supabase/.branches/
 supabase/.temp/
 *.md
+test-results/
+playwright-report/
+artifacts/

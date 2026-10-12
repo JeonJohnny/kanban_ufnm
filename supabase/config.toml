@@ -1,0 +1,16 @@
+project_id = "kanban_ufnm"
+
+[auth]
+enable_signup = false
+
+[functions.pin-auth]
+verify_jwt = false
+
+[functions.manage-member]
+verify_jwt = false
+
+[functions.send-email]
+verify_jwt = false
+
+[functions.task-email-worker]
+verify_jwt = false

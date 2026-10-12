@@ -70,6 +70,7 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase/migrations/202610130017_task_comments.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/202610130018_member_projects.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/202610130019_comment_unread.sql', 'utf8'))
+  await db.exec(readFileSync('supabase/migrations/202610130020_member_activity_report.sql', 'utf8'))
   expect((await db.query('select all_members from public.projects')).rows.every(p => p.all_members === false)).toBe(true)
 }, 30_000)
 beforeEach(async () => { await db.exec('begin'); await login() })
@@ -77,6 +78,74 @@ afterEach(async () => { await db.exec('rollback'); await db.exec('reset role') }
 afterAll(async () => { await db?.close() })
 
 describe('권한과 인증', () => {
+  const report = async (period = 'week', anchor: string | null = '2026-10-14', member: string | null = null) => (await db.query<{ result: { start_date: string; end_date: string; members: {id:string}[]; entries: { id: string; kind: string; member_id: string | null; content: string; blockers?: string }[] } }>('select public.member_activity_report($1,$2,$3) as result', [period, anchor, member])).rows[0].result
+  it('수행 내역은 관리자·부관리자만 같은 연구실 범위에서 조회한다', async () => {
+    expect((await report()).members).toHaveLength(3)
+    await denied(() => report('day'), /주간 또는 월간/)
+    await denied(() => report('week', null), /기준 날짜/)
+    await denied(() => report('week', '2026-10-14', id(23)), /같은 연구실/)
+    await login(2)
+    await denied(() => report(), /관리자·부관리자/)
+    await login()
+    await db.query('select public.set_member_role($1,$2,$3)', [id(22), 'deputy', 'member'])
+    await login(2)
+    expect((await report()).members).toHaveLength(3)
+    await login()
+    await db.query('select public.set_member_role($1,$2,$3)', [id(22), 'member', 'deputy'])
+    await login(2)
+    await denied(() => report(), /관리자·부관리자/)
+    await login(1, 999)
+    await denied(() => report(), /관리자·부관리자/)
+    await login(1, 11, 'anon')
+    await denied(() => report(), /permission denied/)
+  })
+  it('한국시간 주간 경계·공동 담당자·보관·미지정·댓글·진행상황을 정확히 집계한다', async () => {
+    await db.exec('reset role')
+    await db.exec(`
+      insert into public.tasks(id,project_id,title,status,assignee_member_ids,created_by,completed_at) values
+      ('${id(301)}','${id(101)}','공동 완료','done',array['${id(22)}','${id(24)}']::uuid[],'${id(21)}','2026-10-11 15:00:00+00'),
+      ('${id(302)}','${id(101)}','직전 주','done',array['${id(22)}']::uuid[],'${id(21)}','2026-10-11 14:59:59+00'),
+      ('${id(303)}','${id(101)}','다음 주','done',array['${id(22)}']::uuid[],'${id(21)}','2026-10-18 15:00:00+00'),
+      ('${id(304)}','${id(101)}','미지정','done','{}','${id(21)}','2026-10-18 14:59:59+00'),
+      ('${id(305)}','${id(201)}','외부','done',array['${id(23)}']::uuid[],'${id(23)}','2026-10-12 00:00:00+09'),
+      ('${id(306)}','${id(101)}','삭제','done',array['${id(22)}']::uuid[],'${id(21)}','2026-10-12 00:00:00+09');
+      update public.tasks set archived_at=now() where id='${id(301)}';
+      update public.tasks set deleted_at=now() where id='${id(306)}';
+      insert into public.task_comments(id,task_id,author_member_id,content,created_at) values
+      ('${id(401)}','${id(301)}','${id(22)}','연구 의견','2026-10-13 09:00:00+09'),
+      ('${id(402)}','${id(301)}','${id(22)}','삭제 댓글','2026-10-13 09:00:00+09'),
+      ('${id(403)}','${id(305)}','${id(23)}','외부 댓글','2026-10-13 09:00:00+09');
+      update public.task_comments set deleted_at=now() where id='${id(402)}';
+      insert into public.progress_requests(id,project_id,task_id,requester_member_id,assignee_member_id,current_work,blockers,next_steps,responded_at) values
+      ('${id(501)}','${id(101)}','${id(301)}','${id(21)}','${id(22)}','합성 완료','지연 없음','분석 예정','2026-10-14 10:00:00+09');
+    `)
+    await login()
+    const weekly = await report()
+    expect([weekly.start_date, weekly.end_date]).toEqual(['2026-10-12', '2026-10-18'])
+    expect(weekly.entries).toHaveLength(5)
+    expect(weekly.entries.filter(e => e.id === id(301)).map(e => e.member_id).sort()).toEqual([id(22), id(24)])
+    expect(weekly.entries.find(e => e.id === id(304))?.member_id).toBeNull()
+    expect(weekly.entries.find(e => e.kind === 'response')).toMatchObject({ content: '합성 완료', blockers: '지연 없음' })
+    const individual = await report('week', '2026-10-14', id(22))
+    expect(individual.members).toEqual([expect.objectContaining({ id: id(22) })])
+    expect(individual.entries).toHaveLength(3)
+    expect(individual.entries.every(e => e.member_id === id(22))).toBe(true)
+    await db.exec('reset role')
+    await db.query('update public.tasks set status=$1,completed_at=null where id=$2', ['ongoing', id(301)])
+    await login()
+    expect((await report()).entries.filter(e => e.kind === 'completed')).toHaveLength(1)
+  })
+  it('월간은 한국시간 월초 이상 다음 달 월초 미만이며 윤년·연말도 처리한다', async () => {
+    await db.exec('reset role')
+    await db.exec(`insert into public.tasks(project_id,title,status,assignee_member_ids,created_by,completed_at)
+      select '${id(101)}','경계 테스트','done',array['${id(22)}']::uuid[],'${id(21)}',stamp::timestamptz
+      from unnest(array['2026-09-30 14:59:59+00','2026-09-30 15:00:00+00','2026-10-31 14:59:59+00','2026-10-31 15:00:00+00']) stamp`)
+    await login()
+    const monthly = await report('month')
+    expect([monthly.start_date, monthly.end_date, monthly.entries.length]).toEqual(['2026-10-01', '2026-10-31', 2])
+    expect(await report('month', '2028-02-10')).toMatchObject({ start_date: '2028-02-01', end_date: '2028-02-29' })
+    expect(await report('week', '2026-01-01')).toMatchObject({ start_date: '2025-12-29', end_date: '2026-01-04' })
+  })
   it('연구원은 본인 소유 프로젝트를 만들고 관리하지만 다른 연구원과 외부인은 접근할 수 없다', async () => {
     await login(2)
     const project = await act('save_project', { name: '개인 연구', owner_member_id: id(24) })

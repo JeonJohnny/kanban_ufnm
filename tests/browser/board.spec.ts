@@ -6,6 +6,7 @@ test('로그인 → 태스크 저장 → 전달사항 → 메일 초안, 반응�
   const tasks: Record<string, unknown>[] = []
   const emails: Record<string, unknown>[] = []
   const pinChanges: Record<string, unknown>[] = []
+  const reportRequests: Record<string, unknown>[] = []
   let conflictShown = false
   const mailSettings = { enabled: true, start_hour: 9, end_hour: 18, stats: { pending: 0, missing_email: 0, failed: 0, unknown: 0 } }
   const data: Record<string, unknown[]> = {
@@ -27,6 +28,16 @@ test('로그인 → 태스크 저장 → 전달사항 → 메일 초안, 반응�
     }
     else if (url.pathname.endsWith('/user')) result = user
     else if (url.pathname.endsWith('/current_member')) result = member
+    else if (url.pathname.endsWith('/member_activity_report')) {
+      expect(['admin', 'deputy']).toContain(member.role)
+      reportRequests.push(payload)
+      const entries = [
+        { kind: 'completed', id: 'report-task', member_id: 'member-2', task_id: 'report-task', task_title: '주간 완료 실험', project_name: '연구 프로젝트', occurred_at: '2026-10-13T01:00:00Z', content: '- 시료 분석 완료' },
+        { kind: 'response', id: 'report-response', member_id: 'member-2', task_id: 'report-task', task_title: '실험 진행 보고', project_name: '연구 프로젝트', occurred_at: '2026-10-13T02:00:00Z', content: '측정 완료', blockers: '문제 없음', next_steps: '논문 작성', estimated_completion_date: '2026-10-16' },
+        { kind: 'comment', id: 'report-comment', member_id: member.id, task_id: 'report-task', task_title: '검토 의견', project_name: '연구 프로젝트', occurred_at: '2026-10-13T03:00:00Z', content: '<script>alert(1)</script>' },
+      ]
+      result = { start_date: payload.p_period === 'month' ? '2026-10-01' : '2026-10-12', end_date: payload.p_period === 'month' ? '2026-10-31' : '2026-10-18', members: data.workspace_members.filter(m => !payload.p_member || (m as {id:string}).id === payload.p_member), entries: entries.filter(e => !payload.p_member || e.member_id === payload.p_member) }
+    }
     else if (url.pathname.endsWith('/add_task_comment')) {
       result = { id: `comment-${data.task_comments.length}` }
       data.task_comments.push({ ...(result as object), task_id: payload.p_task, content: payload.p_content, author_member_id: member.id, created_at: new Date().toISOString(), deleted_at: null })
@@ -99,6 +110,29 @@ test('로그인 → 태스크 저장 → 전달사항 → 메일 초안, 반응�
   await page.getByLabel('개인 PIN').fill('1234')
   await page.getByRole('button', { name: '연구실 입장' }).click()
   await expect(page.getByRole('heading', { name: '신소재 합성 연구' })).toBeVisible()
+  await page.getByRole('button', { name: '수행 내역', exact: true }).click()
+  await page.getByLabel('기준 날짜', { exact: true }).fill('2026-10-14')
+  await expect(page.getByRole('heading', { name: '2026-10-12 ~ 2026-10-18', exact: true })).toBeVisible()
+  const activity = page.getByRole('region', { name: '연구원별 수행 내역' })
+  const memberReport = activity.getByRole('article').filter({ has: page.getByRole('heading', { name: '동료 연구원', exact: true }) })
+  await expect(memberReport).toContainText('완료 업무 1건')
+  await expect(memberReport).toContainText('진행상황 응답 1건')
+  await memberReport.getByRole('listitem').filter({ hasText: '실험 진행 보고' }).locator('summary').click()
+  await expect(memberReport.getByText('논문 작성', { exact: false })).toBeVisible()
+  await activity.getByRole('listitem').filter({ hasText: '검토 의견' }).locator('summary').click()
+  await expect(activity.getByText('<script>alert(1)</script>', { exact: true })).toBeVisible()
+  await page.getByRole('combobox', { name: '연구원 선택', exact: true }).selectOption('member-2')
+  await expect(activity.getByRole('article')).toHaveCount(1)
+  await page.getByRole('combobox', { name: '집계 기간', exact: true }).selectOption('month')
+  await expect(page.getByRole('heading', { name: '2026-10-01 ~ 2026-10-31', exact: true })).toBeVisible()
+  expect(reportRequests.at(-1)).toEqual({ p_period: 'month', p_anchor: '2026-10-14', p_member: 'member-2' })
+  await page.getByRole('button', { name: '이전 기간', exact: true }).click()
+  await expect(page.getByLabel('기준 날짜', { exact: true })).toHaveValue('2026-09-01')
+  await page.getByRole('button', { name: '다음 기간', exact: true }).click()
+  await expect(page.getByLabel('기준 날짜', { exact: true })).toHaveValue('2026-10-01')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.screenshot({ path: `artifacts/activity-report-${testInfo.project.name}.png`, fullPage: true })
+  await page.getByRole('button', { name: '프로젝트 보드', exact: true }).click()
   await expect(page.getByRole('button', { name: '프로젝트 보드', exact: true })).toHaveText('프로젝트 보드')
   await expect(page.getByRole('button', { name: '전달사항', exact: true })).toContainText('2')
   expect(data.project_reads).toHaveLength(0)
@@ -348,8 +382,12 @@ test('로그인 → 태스크 저장 → 전달사항 → 메일 초안, 반응�
   await expect(page.getByRole('button', { name: '연구원으로 변경', exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: '설정', exact: true }).click()
   await expect(page.getByLabel('첫 발송 시각')).toHaveValue('10')
+  await page.getByRole('button', { name: '수행 내역', exact: true }).click()
+  await expect(page.getByRole('region', { name: '연구원별 수행 내역' })).toBeVisible()
   member.role='member'
   await page.reload()
+  await expect(page.getByRole('button', { name: '수행 내역', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('region', { name: '연구원별 수행 내역' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: '설정', exact: true })).toHaveCount(0)
   await expect(page.getByLabel('첫 발송 시각')).toHaveCount(0)
   await page.getByRole('button', { name: '프로젝트 보드', exact: true }).click()

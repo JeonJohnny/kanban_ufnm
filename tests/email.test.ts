@@ -8,6 +8,7 @@ describe('서버 메일 발송', () => {
     const draft=taskDigest({id:'batch',to:email.to,name:'연구원',tasks:Array.from({length:50},()=>({title:'가'.repeat(200),project:'나'.repeat(100)}))})
     expect(draft.subject).toContain('50개')
     expect(draft.text).toContain('외 20개 태스크')
+    expect(draft.text).toContain('https://jeonjohnny.github.io/kanban_ufnm/')
     expect(validateEmail(draft).text).toMatch(/시스템에서 발송된 메일입니다\.$/)
   })
   it('잘못된 주소와 헤더 삽입 및 빈 본문을 거부한다', () => {
@@ -24,6 +25,16 @@ describe('서버 메일 발송', () => {
     const [, options] = transport.mock.calls[0]
     expect(JSON.parse(options!.body as string)).toEqual({ from: 'lab@example.com', to: [email.to], subject: email.subject, text: email.text })
     expect(new Headers(options!.headers).get('Idempotency-Key')).toBe('lab-notice/request-1')
+  })
+  it('직접 발송과 기존 안내가 있는 본문에도 사이트 링크를 한 번만 포함한다', () => {
+    const url = 'https://jeonjohnny.github.io/kanban_ufnm/'
+    for (const text of [email.text, `${email.text}\n\n시스템에서 발송된 메일입니다.`, `${email.text}\n${url}`]) {
+      const result = validateEmail({ ...email, text }).text
+      expect(result.split(url)).toHaveLength(2)
+      expect(withSystemFooter(result)).toBe(result)
+      expect(result).toContain(email.text)
+    }
+    expect(() => validateEmail({ ...email, text: '가'.repeat(19990) })).toThrow(/20,000자/)
   })
   it('통신 결과가 불명확하면 성공으로 표시하거나 자동 재발송하지 않는다', async () => {
     const transport = vi.fn<typeof fetch>().mockRejectedValue(new Error('timeout'))

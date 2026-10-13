@@ -57,7 +57,7 @@ export function Mail({ notice, author, recipients, onClose }: { notice: Notice; 
         <Button type="button" variant="outline" onClick={() => { setDraft(makeDraft(notice.title, notice.content, author)); setMessage('초안을 다시 생성했습니다.') }}>초안 다시 작성</Button>
         <label>제목<input value={draft.subject} onChange={e => setDraft({ ...draft, subject: e.target.value })} required maxLength={200} /></label>
         <label>본문<textarea className="!min-h-64" value={draft.body} onChange={e => setDraft({ ...draft, body: e.target.value })} required maxLength={20000} /></label>
-        <p className="caption">본문 끝에 “시스템에서 발송된 메일입니다.” 안내가 포함됩니다.</p>
+        <p className="caption">사이트 바로가기 링크와 “시스템에서 발송된 메일입니다.” 안내가 자동으로 포함됩니다.</p>
       </fieldset>
       <div className="flex flex-wrap gap-2">
         <Button type="button" variant="outline" onClick={async () => { try { await navigator.clipboard.writeText(`${draft.subject}\n\n${withSystemFooter(draft.body)}`); setMessage('복사했습니다.') } catch { setError('복사하지 못했습니다. 텍스트를 직접 선택해 복사하세요.') } }}><Copy />복사</Button>

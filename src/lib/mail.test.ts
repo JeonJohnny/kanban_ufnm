@@ -9,6 +9,7 @@ describe('메일 템플릿', () => {
     expect(korean.body).toContain('금요일 10시\n장비 확인')
     expect(korean.body).toContain('감사합니다.')
     expect(korean.body).toContain('안녕하세요.')
+    expect(korean.body).toContain('https://jeonjohnny.github.io/kanban_ufnm/')
     expect(korean.body).toMatch(/시스템에서 발송된 메일입니다\.$/)
   })
   it('메일 헤더에 특수문자가 새 매개변수를 삽입하지 못하게 한다', () => {

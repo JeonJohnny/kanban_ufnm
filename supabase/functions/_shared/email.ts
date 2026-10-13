@@ -1,6 +1,8 @@
 export function withSystemFooter(text: string) {
   const footer = '시스템에서 발송된 메일입니다.'
-  return text.includes(footer) ? text : `${text.trimEnd()}\n\n${footer}`
+  const url = 'https://jeonjohnny.github.io/kanban_ufnm/'
+  const linked = text.includes(url) ? text : `${text.trimEnd()}\n\nLab Project Board 바로가기\n${url}`
+  return linked.includes(footer) ? linked : `${linked.trimEnd()}\n\n${footer}`
 }
 
 export function validateEmail(input: { to?: unknown; subject?: unknown; text?: unknown }) {

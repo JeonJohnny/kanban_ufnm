@@ -36,7 +36,7 @@ test('로그인 → 태스크 저장 → 전달사항 → 메일 초안, 반응�
         { kind: 'response', id: 'report-response', member_id: 'member-2', task_id: 'report-task', task_title: '실험 진행 보고', project_name: '연구 프로젝트', occurred_at: '2026-10-13T02:00:00Z', content: '측정 완료', blockers: '문제 없음', next_steps: '논문 작성', estimated_completion_date: '2026-10-16' },
         { kind: 'comment', id: 'report-comment', member_id: member.id, task_id: 'report-task', task_title: '검토 의견', project_name: '연구 프로젝트', occurred_at: '2026-10-13T03:00:00Z', content: '<script>alert(1)</script>' },
       ]
-      result = { start_date: payload.p_period === 'month' ? '2026-10-01' : '2026-10-12', end_date: payload.p_period === 'month' ? '2026-10-31' : '2026-10-18', members: data.workspace_members.filter(m => !payload.p_member || (m as {id:string}).id === payload.p_member), entries: entries.filter(e => !payload.p_member || e.member_id === payload.p_member) }
+      result = { week_start: '2026-10-12', week_end: '2026-10-18', month_start: '2026-10-01', month_end: '2026-10-31', counts: [{ member_id: 'member-2', todo: 2, ongoing: 3, week_done: 1, month_done: 4 }].filter(c => !payload.p_member || c.member_id === payload.p_member), start_date: payload.p_period === 'month' ? '2026-10-01' : '2026-10-12', end_date: payload.p_period === 'month' ? '2026-10-31' : '2026-10-18', members: data.workspace_members.filter(m => !payload.p_member || (m as {id:string}).id === payload.p_member), entries: entries.filter(e => !payload.p_member || e.member_id === payload.p_member) }
     }
     else if (url.pathname.endsWith('/add_task_comment')) {
       result = { id: `comment-${data.task_comments.length}` }
@@ -117,6 +117,9 @@ test('로그인 → 태스크 저장 → 전달사항 → 메일 초안, 반응�
   const memberReport = activity.getByRole('article').filter({ has: page.getByRole('heading', { name: '동료 연구원', exact: true }) })
   await expect(memberReport).toContainText('완료 업무 1건')
   await expect(memberReport).toContainText('진행상황 응답 1건')
+  for (const [label, value] of [['대기 중', 2], ['진행 중', 3], ['주간 완료', 1], ['월간 완료', 4]]) {
+    await expect(memberReport.locator('dl > div').filter({ hasText: String(label) })).toHaveText(`${label}${value}건`)
+  }
   await memberReport.getByRole('listitem').filter({ hasText: '실험 진행 보고' }).locator('summary').click()
   await expect(memberReport.getByText('논문 작성', { exact: false })).toBeVisible()
   await activity.getByRole('listitem').filter({ hasText: '검토 의견' }).locator('summary').click()
@@ -132,6 +135,7 @@ test('로그인 → 태스크 저장 → 전달사항 → 메일 초안, 반응�
   await page.getByRole('button', { name: '목록으로', exact: true }).click()
   await memberReport.getByRole('button', { name: '상세 보기', exact: true }).click()
   await expect(documentReport).toContainText('대상: 동료 연구원')
+  await expect(documentReport.locator('dl > div').filter({ hasText: '월간 완료' })).toHaveText('월간 완료4건')
   await expect(documentReport.getByText('<script>alert(1)</script>', { exact: true })).toHaveCount(0)
   await expect(documentReport.getByRole('heading', { name: '1. 주간 완료 실험', exact: true })).toHaveCount(1)
   await expect(documentReport.getByText('시료 분석 완료', { exact: true })).toBeVisible()
@@ -292,7 +296,7 @@ test('로그인 → 태스크 저장 → 전달사항 → 메일 초안, 반응�
   await dialog.getByRole('button', { name: '보내기', exact: true }).click()
   await expect(dialog.getByRole('status')).toContainText('메일 발송을 접수했습니다')
   expect(emails).toHaveLength(1)
-  expect(emails[0]).toMatchObject({ to: 'colleague@example.com', subject: '사용자가 수정한 제목', text: '사용자가 수정한 본문\n\n시스템에서 발송된 메일입니다.', notice_id: 'notice-1' })
+  expect(emails[0]).toMatchObject({ to: 'colleague@example.com', subject: '사용자가 수정한 제목', text: '사용자가 수정한 본문\n\nLab Project Board 바로가기\nhttps://jeonjohnny.github.io/kanban_ufnm/\n\n시스템에서 발송된 메일입니다.', notice_id: 'notice-1' })
   await expect(dialog.getByRole('button', { name: '발송 접수 완료' })).toBeDisabled()
   await dialog.getByRole('button', { name: '닫기', exact: true }).click()
   await page.getByRole('button', { name: /개인 전달 테스트/ }).click()

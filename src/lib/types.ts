@@ -9,6 +9,7 @@ export type TaskRead = { task_id: string; member_id: string; read_at: string }
 export type BoardData = { members: Member[]; projects: Project[]; tasks: Task[]; notices: Notice[]; receipts: Receipt[]; progress: Progress[]; notifications: Notification[]; taskReads: TaskRead[]; comments: TaskComment[] }
 
 export const canManage = (role: Member['role']) => role === 'admin' || role === 'deputy'
+export const canWorkOnTask = (task: Task, me: Member) => canManage(me.role) || task.assignee_member_ids.length === 0 || task.assignee_member_ids.includes(me.id)
 export const roleNames: Record<Member['role'], string> = { admin: '관리자', deputy: '부관리자', member: '연구원' }
 
 export type TaskComment = { id: string; task_id: string; author_member_id: string; content: string; created_at: string; deleted_at: string | null }

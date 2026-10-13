@@ -1,4 +1,4 @@
-import { canManage } from '@/lib/types'
+import { canManage, canWorkOnTask } from '@/lib/types'
 import { useState, type FormEvent } from 'react'
 import { Send, Trash2 } from 'lucide-react'
 import { Button } from './ui/button'
@@ -46,9 +46,9 @@ export function Forms({ editor, project, data, me, busy, error, run, onClose }: 
       <div className="grid grid-cols-2 gap-4"><label>상태<select name="status" defaultValue={task?.status ?? editor.status ?? 'todo'}>{Object.entries(statusNames).map(([v, label]) => <option key={v} value={v}>{label}</option>)}</select></label><label>우선순위<select name="priority" defaultValue={task?.priority ?? 'normal'}>{Object.entries(priorityNames).map(([v, label]) => <option key={v} value={v}>{label}</option>)}</select></label><label>마감일<input type="date" name="due_date" defaultValue={task?.due_date ?? ''} /></label></div>
       <fieldset><legend className="mb-2 text-sm font-medium">담당자 (여러 명 선택 가능)</legend><div className="grid gap-2 sm:grid-cols-2">{[...assignees.map(m => ({ id: m.id, label: m.display_name, role: m.role })), ...taskAssignees.filter(id => !assignees.some(m => m.id === id)).map(id => ({ id, role: undefined, label: `${data.members.find(m => m.id === id)?.display_name ?? '기존 담당자'} (프로젝트 미할당·비활성)` }))].map(m => <label key={m.id} className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={taskAssignees.includes(m.id)} onChange={e => setTaskAssignees(current => e.target.checked ? [...current, m.id] : current.filter(id => id !== m.id))} />{m.label}{m.role === 'deputy' && <span aria-hidden="true" className="chip bg-primary/10 text-primary">부관리자</span>}</label>)}</div></fieldset>
       {task?.source_notice_id && <p className="caption">전달사항에서 생성된 태스크입니다.</p>}
-      <p className="caption">담당자를 선택하지 않으면 프로젝트 멤버 전체에게 공개됩니다. 선택하면 지정한 연구원들과 관리자만 볼 수 있습니다.</p>
+      <p className="caption">프로젝트 멤버는 모든 태스크를 볼 수 있습니다. 본인이 담당자가 아닌 업무는 제목이 회색으로 표시됩니다. 담당자를 선택하지 않으면 전체 멤버 업무입니다.</p>
       {task && <p className="caption">프로젝트를 바꾸고 저장하면 태스크와 연결된 진행상황 요청·응답도 함께 이동합니다.</p>}
-      {task && <><Button type="button" variant="outline" disabled={!task.assignee_member_ids.length} onClick={async () => { if (await run('request_progress', { task_id: task.id })) onClose() }}><Send />진행상황 공유 요청</Button><p className="caption">저장된 담당자 모두에게 개별 요청을 보냅니다. 담당자를 변경했다면 먼저 저장하세요.</p></>}
+      {task && <><Button type="button" variant="outline" disabled={!task.assignee_member_ids.length || !canWorkOnTask(task, me)} onClick={async () => { if (await run('request_progress', { task_id: task.id })) onClose() }}><Send />진행상황 공유 요청</Button><p className="caption">저장된 담당자 모두에게 개별 요청을 보냅니다. 담당자를 변경했다면 먼저 저장하세요.</p></>}
       <div className="mt-2 flex justify-between gap-2">{task ? <Button type="button" variant="ghost" className="text-red-600" onClick={async () => { if (await run('delete_task', { id: task.id, revision: task.revision })) onClose() }}><Trash2 />삭제</Button> : <span />}<div className="flex gap-2"><Button type="button" variant="outline" onClick={onClose}>취소</Button><Button type="submit">{busy ? '저장 중…' : '저장'}</Button></div></div>{task && <p className="caption">삭제한 태스크는 관리자가 보관함에서 복원할 수 있습니다.</p>}
     </fieldset></form>{task && <TaskComments task={task} data={data} me={me} busy={busy} run={run} />}</Modal>
   }

@@ -1,4 +1,5 @@
 import { canWorkOnTask, canManage, roleNames } from '@/lib/types'
+import { applyAppUpdate, isAppUpdateReady } from '@/lib/appUpdate'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
@@ -33,7 +34,7 @@ export default function Workspace({ me, theme, onLeave }: { me: Member; theme: R
   const [message, setMessage] = useState('')
   const [online, setOnline] = useState(navigator.onLine)
   const [live, setLive] = useState(false)
-  const [update, setUpdate] = useState(false)
+  const [update, setUpdate] = useState(isAppUpdateReady)
   const [archiveSearch, setArchiveSearch] = useState('')
   const [selectedNotice, setSelectedNotice] = useState<string | null>(null)
   const [noticeBox, setNoticeBox] = useState<'received' | 'sent'>('received')
@@ -99,7 +100,7 @@ export default function Workspace({ me, theme, onLeave }: { me: Member; theme: R
       {!online && <div role="status" className="mb-5 flex gap-2 rounded-xl bg-amber-100 p-3 text-sm text-amber-900"><WifiOff size={18} />오프라인입니다. 마지막으로 불러온 내용을 표시하며, 수정은 연결 후 가능합니다.</div>}
       {online && !live && <p className="mb-4 text-xs text-muted-foreground">실시간 연결을 다시 시도하고 있습니다. 30초마다 데이터를 갱신합니다.</p>}
       {(error || query.isError) && <div role="alert" className="mb-5 flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200"><span>{error || '데이터를 불러오지 못했습니다. 서버 연결을 확인하세요.'}</span><Button variant="ghost" size="icon" aria-label="다시 불러오기" onClick={() => { setError(''); query.refetch() }}><RefreshCw /></Button></div>}
-      {update && <div className="panel mb-5 flex items-center justify-between p-4 text-sm">새 버전이 있습니다. 입력 중인 내용을 저장하고 앱을 다시 열어 주세요.<Button variant="ghost" onClick={() => setUpdate(false)}>확인</Button></div>}
+      {update && <div className="panel mb-5 flex flex-wrap items-center justify-between gap-3 p-4 text-sm"><p>새 버전이 있습니다. 입력 중인 내용을 저장한 뒤 업데이트해 주세요.</p><Button disabled={busy || !online} onClick={() => { void applyAppUpdate(true).catch(() => setError('업데이트하지 못했습니다. 연결을 확인하고 다시 시도하세요.')) }}><RefreshCw />업데이트</Button></div>}
       {query.isPending ? <p className="empty">연구실 데이터를 불러오는 중…</p> : <>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3"><div><p className="mb-1 text-[11px] font-semibold tracking-[.16em] text-muted-foreground">LAB WORKSPACE</p><h1 className="text-2xl font-semibold tracking-tight md:text-3xl">{page === 'board' ? project?.name ?? '프로젝트 보드' : page === 'notifications' ? '알림' : pages.find(p => p.id === page)?.label}</h1><p className="mt-1 text-sm text-muted-foreground">{page === 'board' ? project?.description || '연구의 다음 단계를 함께 정리해 보세요.' : page === 'notices' ? '놓치지 않아야 할 소식과 동료에게 전할 이야기.' : page === 'progress' ? '지금까지의 진행과 다음 계획을 공유합니다.' : page === 'archive' ? '완료 후 30일이 지난 업무를 안전하게 보관합니다.' : page === 'reports' ? '연구원별 주간·월간 완료 업무와 활동을 모아 봅니다.' : page === 'settings' ? '연구실 알림과 메일 발송 시간을 관리합니다.' : page === 'members' ? '함께 연구하는 동료들입니다.' : '나에게 도착한 새로운 소식을 확인하세요.'}</p></div><div className="flex gap-2">{page === 'board' && project && (canManage(me.role) || project.owner_member_id === me.id) && <Button variant="outline" size="icon" aria-label="프로젝트 설정" onClick={() => setEditor({ kind: 'project', project })}><Settings2 /></Button>}{page === 'board' && project?.status === 'active' && <Button disabled={!online || busy} onClick={() => setEditor({ kind: 'task' })}><Plus />새 태스크</Button>}{page === 'board' && <Button variant="outline" onClick={() => setEditor({ kind: 'project' })}><Plus />프로젝트</Button>}{page === 'notices' && <Button disabled={!online || busy} onClick={() => setEditor({ kind: 'notice' })}><Plus />전달사항 작성</Button>}{page === 'members' && canManage(me.role) && <Button disabled={!online || busy} onClick={() => setEditor({ kind: 'member' })}><Plus />연구원 추가</Button>}</div></div>
       {page === 'settings' && canManage(me.role) && <Settings />}

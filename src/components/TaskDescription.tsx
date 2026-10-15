@@ -2,8 +2,8 @@ import { useRef, useState, type KeyboardEvent } from 'react'
 import Markdown from 'react-markdown'
 import { editMarkdownList } from '../lib/markdownEditing'
 
-export function TaskDescription({ text, compact = false }: { text: string; compact?: boolean }) {
-  return <div className={`task-markdown ${compact ? 'max-h-10 overflow-hidden text-xs leading-5 text-muted-foreground' : 'text-sm leading-6'}`}>
+export function TaskDescription({ text, compact = false, document = false }: { text: string; compact?: boolean; document?: boolean }) {
+  return <div className={`task-markdown ${compact ? 'max-h-10 overflow-hidden text-xs leading-5 text-muted-foreground' : document ? 'text-base leading-7' : 'text-sm leading-6'}`}>
     <Markdown skipHtml disallowedElements={compact ? ['a'] : []} unwrapDisallowed components={{
       img: ({ alt }) => <span>{alt}</span>,
       a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,

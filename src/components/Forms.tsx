@@ -31,20 +31,22 @@ export function Forms({ editor, project, data, me, busy, error, run, onClose }: 
     if (task && (!editingTask || !canEdit)) {
       const current = data.tasks.find(t => t.id === task.id) ?? task
       const archived = !!current.archived_at || !!current.deleted_at || data.projects.find(p => p.id === current.project_id)?.status === 'archived'
-      return <Modal error={error} title={current.title} onClose={onClose} wide>
-        <div className="mb-4 flex flex-wrap gap-2">
-          {canEdit && <Button variant="outline" disabled={busy || archived} onClick={() => { setTaskProject(current.project_id); setTaskAssignees(current.assignee_member_ids); setEditingTask(current) }}><Pencil />편집</Button>}
-          {current.assignee_member_ids.length > 0 && canWorkOnTask(current, me) && <Button variant="outline" disabled={busy || archived} onClick={() => { void run('request_progress', { task_id: current.id }) }}><Send />진행상황 공유 요청</Button>}
-        </div>
-        <dl className="mb-4 grid grid-cols-2 gap-3 text-sm">{[
+      return <Modal error={error} title={current.title} onClose={onClose} wide variant="viewer">
+        <dl className="flex flex-wrap gap-x-6 gap-y-3 border-y py-3 text-sm">{[
           ['프로젝트', data.projects.find(p => p.id === current.project_id)?.name],
           ['생성자', data.members.find(m => m.id === current.created_by)?.display_name],
           ['상태', statusNames[current.status]], ['우선순위', priorityNames[current.priority]],
           ['마감일', dateLabel(current.due_date)],
           ['담당자', current.assignee_member_ids.length ? current.assignee_member_ids.map(id => data.members.find(m => m.id === id)?.display_name ?? '연구원').join(', ') : '전체 멤버'],
-        ].map(([label, value]) => <div key={label}><dt className="caption mb-1">{label}</dt><dd className="break-words">{value ?? '미등록'}</dd></div>)}</dl>
-        <TaskDescription text={current.description || '설명이 없습니다.'} />
-        <TaskComments task={current} data={data} me={me} busy={busy} run={run} />
+        ].map(([label, value]) => <div key={label} className="flex min-w-0 items-baseline gap-2"><dt className="caption shrink-0">{label}</dt><dd className="break-words">{value ?? '미등록'}</dd></div>)}</dl>
+        <section aria-label="태스크 본문" className="py-6">
+          <TaskDescription text={current.description || '설명이 없습니다.'} document />
+        </section>
+        <div className="flex flex-wrap gap-2">
+          {canEdit && <Button disabled={busy || archived} onClick={() => { setTaskProject(current.project_id); setTaskAssignees(current.assignee_member_ids); setEditingTask(current) }}><Pencil />편집</Button>}
+          {current.assignee_member_ids.length > 0 && canWorkOnTask(current, me) && <Button variant="outline" disabled={busy || archived} onClick={() => { void run('request_progress', { task_id: current.id }) }}><Send />진행상황 공유 요청</Button>}
+        </div>
+        <TaskComments task={current} data={data} me={me} busy={busy} run={run} composeOnDemand />
       </Modal>
     }
     return <Modal error={error} title={task ? '태스크 편집' : editor.notice ? '전달사항을 태스크로 전환' : '새 태스크'} onClose={onClose} wide><form onSubmit={e => submit(e, 'save_task', { id: task?.id, revision: task?.revision, source_notice_id: editor.notice?.id, assignee_member_ids: taskAssignees })}><fieldset disabled={busy} className="form-stack">

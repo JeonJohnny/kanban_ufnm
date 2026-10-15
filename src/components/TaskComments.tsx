@@ -1,11 +1,12 @@
 import { useId, useState } from 'react'
-import { ChevronDown, ChevronUp, MessageSquare, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, MessageSquare, Plus, Trash2 } from 'lucide-react'
 import { canManage, type BoardData, type Member, type Task } from '@/lib/types'
 import { Button } from './ui/button'
 import type { Run } from './Forms'
 
-export function TaskComments({ task, data, me, busy, run, collapsible = false, onExpand }: { task: Task; data: BoardData; me: Member; busy: boolean; run: Run; collapsible?: boolean; onExpand?: () => void }) {
+export function TaskComments({ task, data, me, busy, run, collapsible = false, onExpand, composeOnDemand = false }: { task: Task; data: BoardData; me: Member; busy: boolean; run: Run; collapsible?: boolean; onExpand?: () => void; composeOnDemand?: boolean }) {
   const [content, setContent] = useState('')
+  const [composing, setComposing] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const contentId = useId()
   const comments = data.comments.filter(c => c.task_id === task.id && !c.deleted_at).sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))
@@ -26,14 +27,14 @@ export function TaskComments({ task, data, me, busy, run, collapsible = false, o
       <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6">{comment.content}</p>
     </article>)}</div>
     {!comments.length && <p className="caption">아직 댓글이 없습니다.</p>}
-    <form className="mt-3 space-y-2" onSubmit={async event => {
+    {composeOnDemand && !composing ? <Button className="mt-3" variant="outline" disabled={busy || archived} onClick={() => setComposing(true)}><Plus size={15} />댓글 작성</Button> : <form className="mt-3 space-y-2" onSubmit={async event => {
       event.preventDefault()
       if (busy || archived || !content.trim()) return
-      if (await run('add_task_comment', { p_task: task.id, p_content: content.trim() })) setContent('')
-    }}><label className="text-sm font-medium">댓글<textarea value={content} onChange={event => setContent(event.target.value)} maxLength={5000} disabled={busy || archived} placeholder="진행 내용이나 의견을 남겨 주세요." required /></label>
+      if (await run('add_task_comment', { p_task: task.id, p_content: content.trim() })) { setContent(''); setComposing(false) }
+    }}><label className="text-sm font-medium">댓글<textarea value={content} autoFocus={composeOnDemand} onChange={event => setContent(event.target.value)} maxLength={5000} disabled={busy || archived} placeholder="진행 내용이나 의견을 남겨 주세요." required /></label>
       {archived && <p className="caption">보관된 업무는 복원한 뒤 댓글을 작성할 수 있습니다.</p>}
-      <div className="flex justify-end"><Button disabled={busy || archived || !content.trim()}>댓글 등록</Button></div>
-    </form>
+      <div className="flex justify-end gap-2">{composeOnDemand && <Button type="button" variant="ghost" disabled={busy} onClick={() => setComposing(false)}>취소</Button>}<Button disabled={busy || archived || !content.trim()}>댓글 등록</Button></div>
+    </form>}
     </>}
     </div>
   </section>

@@ -1,6 +1,6 @@
 import { canManage, canWorkOnTask } from '@/lib/types'
 import { useState, type FormEvent } from 'react'
-import { Send, Trash2 } from 'lucide-react'
+import { Pencil, Send, Trash2 } from 'lucide-react'
 import { Button } from './ui/button'
 import { Modal } from './ui/dialog'
 import type { BoardData, Member, Notice, Progress, Project, Task } from '@/lib/types'
@@ -12,6 +12,7 @@ import { TaskComments } from './TaskComments'
 export type Run = (action: string, payload?: object) => Promise<boolean>
 export type Editor = { kind: 'task'; task?: Task; notice?: Notice; status?: Task['status'] } | { kind: 'project'; project?: Project } | { kind: 'notice' } | { kind: 'progress'; request: Progress } | { kind: 'mail'; notice: Notice } | { kind: 'member'; member?: Member } | { kind: 'pin' } | { kind: 'email'; member: Member }
 export function Forms({ editor, project, data, me, busy, error, run, onClose }: { editor: Editor; project?: Project; data: BoardData; me: Member; busy: boolean; error: string; run: Run; onClose: () => void }) {
+  const [editingTask, setEditingTask] = useState<Task | null>(null)
   const [taskProject, setTaskProject] = useState(editor.kind === 'task' ? editor.task?.project_id ?? project?.id ?? data.projects.find(p => p.status === 'active')?.id ?? '' : '')
   const [taskAssignees, setTaskAssignees] = useState<string[]>(editor.kind === 'task' ? editor.task?.assignee_member_ids ?? [] : [])
   const selectedProject = data.projects.find(p => p.id === taskProject)
@@ -25,10 +26,16 @@ export function Forms({ editor, project, data, me, busy, error, run, onClose }: 
   if (editor.kind === 'pin') return <PinForm busy={busy} error={error} run={run} onClose={onClose} />
   if (editor.kind === 'email') return <Modal title={`${editor.member.display_name} 이메일 수정`} description="수신용 연락처입니다. 같은 연구실의 로그인한 연구원이 볼 수 있으며, 비워 두면 등록된 주소가 삭제됩니다." error={error} onClose={onClose}><form onSubmit={e => submit(e, 'save_member_email', { p_member: editor.member.id })}><fieldset className="form-stack" disabled={busy}><label>이메일 주소<input autoFocus type="email" name="p_email" maxLength={254} autoComplete="email" defaultValue={editor.member.email ?? ''} placeholder="researcher@example.com" /></label><Button>이메일 저장</Button></fieldset></form></Modal>
   if (editor.kind === 'task') {
-    const task = editor.task
-    if (task && task.created_by !== me.id && !canManage(me.role)) {
+    const task = editingTask ?? editor.task
+    const canEdit = task && (task.created_by === me.id || canManage(me.role))
+    if (task && (!editingTask || !canEdit)) {
       const current = data.tasks.find(t => t.id === task.id) ?? task
+      const archived = !!current.archived_at || !!current.deleted_at || data.projects.find(p => p.id === current.project_id)?.status === 'archived'
       return <Modal error={error} title={current.title} onClose={onClose} wide>
+        <div className="mb-4 flex flex-wrap gap-2">
+          {canEdit && <Button variant="outline" disabled={busy || archived} onClick={() => { setTaskProject(current.project_id); setTaskAssignees(current.assignee_member_ids); setEditingTask(current) }}><Pencil />편집</Button>}
+          {current.assignee_member_ids.length > 0 && canWorkOnTask(current, me) && <Button variant="outline" disabled={busy || archived} onClick={() => { void run('request_progress', { task_id: current.id }) }}><Send />진행상황 공유 요청</Button>}
+        </div>
         <dl className="mb-4 grid grid-cols-2 gap-3 text-sm">{[
           ['프로젝트', data.projects.find(p => p.id === current.project_id)?.name],
           ['생성자', data.members.find(m => m.id === current.created_by)?.display_name],
@@ -40,7 +47,7 @@ export function Forms({ editor, project, data, me, busy, error, run, onClose }: 
         <TaskComments task={current} data={data} me={me} busy={busy} run={run} />
       </Modal>
     }
-    return <Modal error={error} title={task ? '태스크 상세' : editor.notice ? '전달사항을 태스크로 전환' : '새 태스크'} onClose={onClose} wide><form onSubmit={e => submit(e, 'save_task', { id: task?.id, revision: task?.revision, source_notice_id: editor.notice?.id, assignee_member_ids: taskAssignees })}><fieldset disabled={busy} className="form-stack">
+    return <Modal error={error} title={task ? '태스크 편집' : editor.notice ? '전달사항을 태스크로 전환' : '새 태스크'} onClose={onClose} wide><form onSubmit={e => submit(e, 'save_task', { id: task?.id, revision: task?.revision, source_notice_id: editor.notice?.id, assignee_member_ids: taskAssignees })}><fieldset disabled={busy} className="form-stack">
       <label>프로젝트<select name="project_id" value={taskProject} onChange={e => setTaskProject(e.target.value)} required>{data.projects.filter(p => p.status === 'active' || p.id === task?.project_id).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
       <label>제목<input name="title" autoFocus required maxLength={200} defaultValue={task?.title ?? editor.notice?.title} placeholder="어떤 일을 해야 하나요?" /></label><TaskDescriptionEditor initialValue={task?.description ?? editor.notice?.content} />
       <div className="grid grid-cols-2 gap-4"><label>상태<select name="status" defaultValue={task?.status ?? editor.status ?? 'todo'}>{Object.entries(statusNames).map(([v, label]) => <option key={v} value={v}>{label}</option>)}</select></label><label>우선순위<select name="priority" defaultValue={task?.priority ?? 'normal'}>{Object.entries(priorityNames).map(([v, label]) => <option key={v} value={v}>{label}</option>)}</select></label><label>마감일<input type="date" name="due_date" defaultValue={task?.due_date ?? ''} /></label></div>
@@ -48,8 +55,7 @@ export function Forms({ editor, project, data, me, busy, error, run, onClose }: 
       {task?.source_notice_id && <p className="caption">전달사항에서 생성된 태스크입니다.</p>}
       <p className="caption">프로젝트 멤버는 모든 태스크를 볼 수 있습니다. 본인이 담당자가 아닌 업무는 제목이 회색으로 표시됩니다. 담당자를 선택하지 않으면 전체 멤버 업무입니다.</p>
       {task && <p className="caption">프로젝트를 바꾸고 저장하면 태스크와 연결된 진행상황 요청·응답도 함께 이동합니다.</p>}
-      {task && <><Button type="button" variant="outline" disabled={!task.assignee_member_ids.length || !canWorkOnTask(task, me)} onClick={async () => { if (await run('request_progress', { task_id: task.id })) onClose() }}><Send />진행상황 공유 요청</Button><p className="caption">저장된 담당자 모두에게 개별 요청을 보냅니다. 담당자를 변경했다면 먼저 저장하세요.</p></>}
-      <div className="mt-2 flex justify-between gap-2">{task ? <Button type="button" variant="ghost" className="text-red-600" onClick={async () => { if (await run('delete_task', { id: task.id, revision: task.revision })) onClose() }}><Trash2 />삭제</Button> : <span />}<div className="flex gap-2"><Button type="button" variant="outline" onClick={onClose}>취소</Button><Button type="submit">{busy ? '저장 중…' : '저장'}</Button></div></div>{task && <p className="caption">삭제한 태스크는 관리자가 보관함에서 복원할 수 있습니다.</p>}
+      <div className="mt-2 flex justify-between gap-2">{task ? <Button type="button" variant="ghost" className="text-red-600" onClick={async () => { if (await run('delete_task', { id: task.id, revision: task.revision })) onClose() }}><Trash2 />삭제</Button> : <span />}<div className="flex gap-2"><Button type="button" variant="outline" onClick={() => task ? setEditingTask(null) : onClose()}>취소</Button><Button type="submit">{busy ? '저장 중…' : '저장'}</Button></div></div>{task && <p className="caption">삭제한 태스크는 관리자가 보관함에서 복원할 수 있습니다.</p>}
     </fieldset></form>{task && <TaskComments task={task} data={data} me={me} busy={busy} run={run} />}</Modal>
   }
   if (editor.kind === 'project') return <ProjectForm project={editor.project} me={me} data={data} busy={busy} error={error} run={run} onClose={onClose} />

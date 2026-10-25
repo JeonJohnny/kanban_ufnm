@@ -8,7 +8,7 @@ import { TaskComments } from './TaskComments'
 import type { Run } from './Forms'
 import { TaskDescription } from './TaskDescription'
 import { canWorkOnTask, type BoardData, type Member, type Task } from '@/lib/types'
-import { cn, dateLabel, insertionPosition, priorityNames, statusNames, today } from '@/lib/utils'
+import { cn, compareTasks, dateLabel, taskDropPosition, priorityNames, statusNames, today } from '@/lib/utils'
 
 export function Board({ me, tasks, unreadIds, data, run, onRead, disabled, onOpen, onAdd, onMove }: { me: Member; tasks: Task[]; unreadIds: Set<string>; data: BoardData; run: Run; onRead: (t: Task) => void; disabled: boolean; onOpen: (t: Task) => void; onAdd: (status: Task['status']) => void; onMove: (t: Task, status: Task['status'], position: number) => void }) {
   const members = data.members
@@ -17,17 +17,13 @@ export function Board({ me, tasks, unreadIds, data, run, onRead, disabled, onOpe
   const [priority, setPriority] = useState('')
   const [overdue, setOverdue] = useState(false)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }))
-  const filtered = tasks.filter(t => t.title.toLowerCase().includes(search.toLowerCase()) && (!assignee || t.assignee_member_ids.includes(assignee)) && (!priority || t.priority === priority) && (!overdue || (t.due_date && t.due_date < today() && t.status !== 'done'))).sort((a, b) => a.position - b.position || a.id.localeCompare(b.id))
+  const filtered = tasks.filter(t => t.title.toLowerCase().includes(search.toLowerCase()) && (!assignee || t.assignee_member_ids.includes(assignee)) && (!priority || t.priority === priority) && (!overdue || (t.due_date && t.due_date < today() && t.status !== 'done'))).sort(compareTasks)
   function dragEnd({ active, over }: DragEndEvent) {
     if (!over || active.id === over.id || disabled) return
     const task = tasks.find(t => t.id === active.id)!
     const target = tasks.find(t => t.id === over.id)
     const status = target?.status ?? over.id as Task['status']
-    const column = tasks.filter(t => t.status === status && t.id !== task.id).sort((a, b) => a.position - b.position || a.id.localeCompare(b.id))
-    const targetIndex = target ? column.findIndex(t => t.id === target.id) : column.length
-    const oldIndex = tasks.filter(t => t.status === task.status).sort((a, b) => a.position - b.position || a.id.localeCompare(b.id)).findIndex(t => t.id === task.id)
-    const index = task.status === status && oldIndex <= targetIndex && target ? targetIndex + 1 : targetIndex
-    onMove(task, status, insertionPosition(column.map(t => t.position), index))
+    onMove(task, status, taskDropPosition(tasks, task, status, target))
   }
   return <><div className="mb-4 flex flex-wrap items-center gap-3"><div className="relative min-w-48 flex-1 sm:max-w-xs"><Search className="absolute left-3 top-3.5 text-muted-foreground" size={17} /><input aria-label="태스크 검색" placeholder="태스크 검색…" value={search} onChange={e => setSearch(e.target.value)} className="!pl-10" /></div><select aria-label="담당자 필터" className="!w-auto" value={assignee} onChange={e => setAssignee(e.target.value)}><option value="">모든 담당자</option>{members.map(m => <option key={m.id} value={m.id}>{m.display_name}</option>)}</select><select aria-label="우선순위 필터" className="!w-auto" value={priority} onChange={e => setPriority(e.target.value)}><option value="">모든 우선순위</option>{Object.entries(priorityNames).map(([v, name]) => <option key={v} value={v}>{name}</option>)}</select><label className="flex min-h-11 items-center gap-2 !font-normal"><input type="checkbox" checked={overdue} onChange={e => setOverdue(e.target.checked)} />마감 경과</label></div>
     <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={dragEnd}><div className="grid items-start gap-5 md:grid-cols-3">{(Object.keys(statusNames) as Task['status'][]).map(status => <Column me={me} key={status} status={status} unreadIds={unreadIds} tasks={filtered.filter(t => t.status === status)} data={data} run={run} onRead={onRead} disabled={disabled} onOpen={onOpen} onAdd={onAdd} />)}</div></DndContext>

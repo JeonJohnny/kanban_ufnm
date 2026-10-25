@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 
 test('로그인 → 태스크 저장 → 전달사항 → 메일 초안, 반응형 및 다크 모드', async ({ page }, testInfo) => {
+  test.setTimeout(60_000)
   const user = { id: '11111111-1111-4111-8111-111111111111', aud: 'authenticated', role: 'authenticated', email: 'test@lab.invalid', app_metadata: {}, user_metadata: {}, created_at: new Date().toISOString() }
   const member = { id: 'member-1', auth_user_id: user.id, workspace_id: 'workspace-1', display_name: '테스트 연구원', email: null as string | null, role: 'admin', is_active: true }
   const tasks: Record<string, unknown>[] = []
@@ -86,6 +87,12 @@ test('로그인 → 태스크 저장 → 전달사항 → 메일 초안, 반응�
       if (payload.action === 'save_project') {
         if (payload.payload.id) Object.assign(data.projects.find(p => (p as { id: string }).id === payload.payload.id)!, payload.payload)
         else data.projects.push({ ...payload.payload, id: 'project-personal', workspace_id: member.workspace_id, status: 'active', owner_member_id: member.id, member_ids: [member.id], all_members: false })
+      }
+      if (payload.action === 'delete_project') {
+        expect(['admin', 'deputy']).toContain(member.role)
+        expect(payload.payload.name).toBe('나의 개인 프로젝트')
+        data.projects = data.projects.filter(p => (p as { id: string }).id !== payload.payload.id)
+        data.tasks = tasks.filter(t => t.project_id !== payload.payload.id)
       }
       if (payload.action === 'read_notice') {
         const receipt=data.notice_recipients.find(r => (r as {notice_id:string}).notice_id===payload.payload.id)
@@ -508,6 +515,7 @@ test('로그인 → 태스크 저장 → 전달사항 → 메일 초안, 반응�
   await page.reload()
   await page.getByRole('button', { name: '프로젝트 설정', exact: true }).click()
   await expect(dialog.getByLabel('프로젝트 이름', { exact: true })).toHaveValue('나의 개인 프로젝트')
+  await expect(dialog.getByRole('button', { name: '프로젝트 삭제', exact: true })).toHaveCount(0)
   await expect(dialog.getByRole('checkbox')).toHaveCount(0)
   await dialog.getByRole('button', { name: '닫기', exact: true }).click()
   await page.getByRole('button', { name: '새 태스크', exact: true }).click()
@@ -532,6 +540,27 @@ test('로그인 → 태스크 저장 → 전달사항 → 메일 초안, 반응�
   await dialog.getByRole('button', { name: '편집', exact: true }).click()
   await expect(dialog.getByLabel('제목', { exact: true })).toHaveValue('개인 프로젝트 업무')
   await dialog.getByRole('button', { name: '닫기', exact: true }).click()
+  member.role = 'admin'
+  await page.reload()
+  await page.getByRole('button', { name: '프로젝트 설정', exact: true }).click()
+  await dialog.getByRole('button', { name: '프로젝트 삭제', exact: true }).click()
+  await expect(dialog.getByRole('button', { name: '삭제 확정', exact: true })).toBeDisabled()
+  await dialog.getByLabel('삭제 확인: 프로젝트 이름 입력', { exact: true }).fill('틀린 이름')
+  await expect(dialog.getByRole('button', { name: '삭제 확정', exact: true })).toBeDisabled()
+  await dialog.getByRole('button', { name: '삭제 취소', exact: true }).click()
+  await dialog.getByRole('button', { name: '닫기', exact: true }).click()
+  expect(data.projects.some(p => (p as { id: string }).id === 'project-personal')).toBe(true)
+  member.role = 'deputy'
+  await page.reload()
+  await page.getByRole('button', { name: '프로젝트 설정', exact: true }).click()
+  await dialog.getByRole('button', { name: '프로젝트 삭제', exact: true }).click()
+  await dialog.getByLabel('삭제 확인: 프로젝트 이름 입력', { exact: true }).fill('나의 개인 프로젝트')
+  await dialog.getByRole('button', { name: '삭제 확정', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '개인 프로젝트 업무', exact: true })).toHaveCount(0)
+  expect(data.projects.some(p => (p as { id: string }).id === 'project-personal')).toBe(false)
+  member.role = 'member'
+  await page.reload()
   await page.getByRole('button', { name: '내 PIN 변경', exact: true }).click()
   await dialog.getByLabel('현재 PIN', { exact: true }).fill('9999')
   await dialog.getByLabel('새 PIN', { exact: true }).fill('5678')

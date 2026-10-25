@@ -66,6 +66,8 @@ export function Forms({ editor, project, data, me, busy, error, run, onClose }: 
   return <Modal error={error} title={editor.member ? `${editor.member.display_name} PIN 초기화` : '연구원 추가'} description={editor.member ? 'PIN을 초기화하면 해당 연구원의 기존 로그인 세션은 데이터에 접근할 수 없습니다.' : '연구원에게 이름과 PIN을 직접 전달해 주세요.'} onClose={onClose}><form onSubmit={e => submit(e, 'manage_member', { member_id: editor.member?.id })}><fieldset className="form-stack" disabled={busy}>{!editor.member && <label>연구원 이름<input name="name" required maxLength={50} autoComplete="off" /></label>}{!editor.member && <label>이메일 주소 (선택)<input type="email" name="email" maxLength={254} autoComplete="email" placeholder="researcher@example.com" /><span className="caption">수신용 연락처이며 같은 연구실 멤버에게 표시됩니다.</span></label>}<label>새 PIN<input name="pin" type="password" inputMode="numeric" pattern="[0-9]{4}" minLength={4} maxLength={4} required autoComplete="new-password" /></label><Button>{editor.member ? 'PIN 초기화' : '연구원 추가'}</Button>{editor.member?.id === me.id && <p className="caption">본인 PIN을 초기화하면 다시 로그인해야 합니다.</p>}</fieldset></form></Modal>
 }
 function ProjectForm({ project, me, data, busy, error, run, onClose }: { project?: Project; me: Member; data: BoardData; busy: boolean; error: string; run: Run; onClose: () => void }) {
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleteName, setDeleteName] = useState('')
   const privateProject = Boolean(project?.owner_member_id || (!project && !canManage(me.role)))
   const [allMembers, setAllMembers] = useState(project?.all_members ?? false)
   const members = data.members.filter(m => m.is_active && m.role !== 'admin')
@@ -85,7 +87,17 @@ function ProjectForm({ project, me, data, busy, error, run, onClose }: { project
       {members.map(m => <label key={m.id} className="flex min-h-11 items-center gap-2"><input type="checkbox" disabled={allMembers} checked={allMembers || memberIds.includes(m.id)} onChange={e => setMemberIds(current => e.target.checked ? [...current, m.id] : current.filter(id => id !== m.id))} />{m.display_name}{m.role === 'deputy' && <span aria-hidden="true" className="chip bg-primary/10 text-primary">부관리자</span>}</label>)}
       <p className="caption">All을 해제하면 개별 선택한 멤버만 포함됩니다. 아무도 선택하지 않으면 관리자·부관리자만 볼 수 있습니다. 멤버를 제외해도 기존 업무는 삭제되지 않습니다.</p>
     </fieldset>}<Button>프로젝트 저장</Button>
-  </fieldset></form></Modal>
+  </fieldset></form>{project && canManage(me.role) && <section className="mt-5 space-y-3 border-t border-border pt-4" aria-label="프로젝트 삭제">
+    <p className="caption">삭제하면 프로젝트와 연결된 태스크·댓글이 모든 멤버의 화면에서 사라집니다. 데이터는 보존되며 복구는 DB 관리자가 처리해야 합니다.</p>
+    {confirmDelete ? <form className="form-stack" onSubmit={async e => {
+      e.preventDefault()
+      if (busy || deleteName !== project.name) return
+      if (await run('delete_project', { id: project.id, name: deleteName })) onClose()
+    }}><fieldset disabled={busy} className="form-stack">
+      <label>삭제 확인: 프로젝트 이름 입력<input autoFocus value={deleteName} onChange={e => setDeleteName(e.target.value)} autoComplete="off" placeholder={project.name} required /></label>
+      <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => { setConfirmDelete(false); setDeleteName('') }}>삭제 취소</Button><Button type="submit" className="bg-red-600 text-white hover:bg-red-700" disabled={deleteName !== project.name}>{busy ? '삭제 중…' : '삭제 확정'}</Button></div>
+    </fieldset></form> : <Button type="button" variant="outline" className="text-red-600" disabled={busy} onClick={() => setConfirmDelete(true)}><Trash2 />프로젝트 삭제</Button>}
+  </section>}</Modal>
 }
 function PinForm({ busy, error, run, onClose }: { busy: boolean; error: string; run: Run; onClose: () => void }) {
   const [validation, setValidation] = useState('')

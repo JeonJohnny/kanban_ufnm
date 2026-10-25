@@ -45,6 +45,7 @@ export default function Workspace({ me, theme, onLeave }: { me: Member; theme: R
   }, [message])
   useEffect(() => {
     if (query.data && editor?.kind === 'task' && editor.task && !query.data.tasks.some(t => t.id === editor.task!.id)) setEditor(null)
+    if (query.data && editor?.kind === 'project' && editor.project && !query.data.projects.some(p => p.id === editor.project!.id)) setEditor(null)
     if (query.data && editor?.kind === 'progress' && !query.data.progress.some(r => r.id === editor.request.id)) setEditor(null)
   }, [query.data, editor])
   useEffect(() => {
